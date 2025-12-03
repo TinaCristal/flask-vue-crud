@@ -60,7 +60,48 @@ def all_books():
         })
         response_object['message'] = 'Book added!'
     else:
-        response_object['books'] = BOOKS
+        # 处理查询参数
+        search = request.args.get('search', '').lower()
+        read_status = request.args.get('read', '')
+        sort_by = request.args.get('sort_by', 'title')
+        sort_order = request.args.get('sort_order', 'asc')
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 10))
+        
+        # 过滤图书
+        filtered_books = BOOKS.copy()
+        
+        # 搜索过滤（书名或作者）
+        if search:
+            filtered_books = [book for book in filtered_books 
+                            if search in book['title'].lower() or search in book['author'].lower()]
+        
+        # 阅读状态过滤
+        if read_status:
+            read_bool = read_status.lower() == 'true'
+            filtered_books = [book for book in filtered_books if book['read'] == read_bool]
+        
+        # 排序
+        try:
+            filtered_books.sort(key=lambda x: x[sort_by], reverse=sort_order.lower() == 'desc')
+        except KeyError:
+            # 如果排序字段不存在，默认按标题排序
+            filtered_books.sort(key=lambda x: x['title'], reverse=sort_order.lower() == 'desc')
+        
+        # 分页
+        total = len(filtered_books)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_books = filtered_books[start:end]
+        
+        # 构建响应
+        response_object['books'] = paginated_books
+        response_object['pagination'] = {
+            'page': page,
+            'per_page': per_page,
+            'total': total,
+            'pages': (total + per_page - 1) // per_page  # 计算总页数
+        }
     return jsonify(response_object)
 
 
@@ -80,6 +121,43 @@ def single_book(book_id):
     if request.method == 'DELETE':
         remove_book(book_id)
         response_object['message'] = 'Book removed!'
+    return jsonify(response_object)
+
+
+@app.route('/books/batch', methods=['PUT', 'DELETE'])
+def batch_books():
+    response_object = {'status': 'success'}
+    post_data = request.get_json()
+    book_ids = post_data.get('book_ids', [])
+    
+    if not book_ids:
+        response_object['status'] = 'error'
+        response_object['message'] = 'No book IDs provided'
+        return jsonify(response_object), 400
+    
+    if request.method == 'DELETE':
+        # 批量删除图书
+        deleted_count = 0
+        for book_id in book_ids:
+            if remove_book(book_id):
+                deleted_count += 1
+        response_object['message'] = f'Deleted {deleted_count} out of {len(book_ids)} books'
+    
+    if request.method == 'PUT':
+        # 批量更新阅读状态
+        read_status = post_data.get('read')
+        if read_status is None:
+            response_object['status'] = 'error'
+            response_object['message'] = 'No read status provided'
+            return jsonify(response_object), 400
+        
+        updated_count = 0
+        for book in BOOKS:
+            if book['id'] in book_ids:
+                book['read'] = read_status
+                updated_count += 1
+        response_object['message'] = f'Updated {updated_count} out of {len(book_ids)} books'
+    
     return jsonify(response_object)
 
 
