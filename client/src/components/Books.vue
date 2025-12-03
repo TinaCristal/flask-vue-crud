@@ -1,33 +1,134 @@
 <template>
   <div class="container">
     <div class="row">
-      <div class="col-sm-10">
+      <div class="col-sm-12">
         <h1>Books</h1>
-        <hr><br><br>
+        <hr><br>
         <alert :message=message v-if="showMessage"></alert>
-        <button
-          type="button"
-          class="btn btn-success btn-sm"
-          @click="toggleAddBookModal">
-          Add Book
-        </button>
-        <br><br>
+        
+        <!-- Search and Filter Section -->
+        <div class="row mb-4">
+          <div class="col-md-4">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Search by title..."
+              v-model="filters.title"
+              @input="onFilterChange">
+          </div>
+          <div class="col-md-4">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Search by author..."
+              v-model="filters.author"
+              @input="onFilterChange">
+          </div>
+          <div class="col-md-4">
+            <select
+              class="form-control"
+              v-model="filters.read"
+              @change="onFilterChange">
+              <option value="">All</option>
+              <option value="true">Read</option>
+              <option value="false">Unread</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Batch Operations Section -->
+        <div class="row mb-4">
+          <div class="col-md-6">
+            <button
+              type="button"
+              class="btn btn-success btn-sm"
+              @click="toggleAddBookModal">
+              Add Book
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger btn-sm"
+              @click="batchDelete"
+              :disabled="selectedBooks.length === 0"
+              style="margin-left: 10px;">
+              Delete Selected
+            </button>
+            <button
+              type="button"
+              class="btn btn-warning btn-sm"
+              @click="batchMarkRead"
+              :disabled="selectedBooks.length === 0"
+              style="margin-left: 10px;">
+              Mark as Read
+            </button>
+            <button
+              type="button"
+              class="btn btn-info btn-sm"
+              @click="batchMarkUnread"
+              :disabled="selectedBooks.length === 0"
+              style="margin-left: 10px;">
+              Mark as Unread
+            </button>
+          </div>
+          <div class="col-md-6 text-right">
+            <select
+              class="form-control d-inline-block"
+              style="width: auto;"
+              v-model="perPage"
+              @change="onPerPageChange">
+              <option value="5">5 per page</option>
+              <option value="10">10 per page</option>
+              <option value="20">20 per page</option>
+              <option value="50">50 per page</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Books Table -->
         <table class="table table-hover">
           <thead>
             <tr>
-              <th scope="col">Title</th>
-              <th scope="col">Author</th>
-              <th scope="col">Read?</th>
-              <th></th>
+              <th scope="col" style="width: 50px;">
+                <input
+                  type="checkbox"
+                  v-model="selectAll"
+                  @change="onSelectAllChange">
+              </th>
+              <th scope="col" @click="sort('title')" style="cursor: pointer;">
+                Title
+                <span v-if="sortBy === 'title'" class="ml-1">
+                  {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                </span>
+              </th>
+              <th scope="col" @click="sort('author')" style="cursor: pointer;">
+                Author
+                <span v-if="sortBy === 'author'" class="ml-1">
+                  {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                </span>
+              </th>
+              <th scope="col" @click="sort('read')" style="cursor: pointer;">
+                Read?
+                <span v-if="sortBy === 'read'" class="ml-1">
+                  {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                </span>
+              </th>
+              <th scope="col" style="width: 150px;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(book, index) in books" :key="index">
+            <tr v-for="(book, index) in books" :key="book.id">
+              <td>
+                <input
+                  type="checkbox"
+                  v-model="selectedBooks"
+                  :value="book.id"
+                  @change="onSelectChange">
+              </td>
               <td>{{ book.title }}</td>
               <td>{{ book.author }}</td>
               <td>
-                <span v-if="book.read">Yes</span>
-                <span v-else>No</span>
+                <span v-if="book.read" class="badge bg-success">Yes</span>
+                <span v-else class="badge bg-secondary">No</span>
               </td>
               <td>
                 <div class="btn-group" role="group">
@@ -48,6 +149,34 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- Pagination Section -->
+        <nav aria-label="Page navigation">
+          <ul class="pagination justify-content-center">
+            <li class="page-item" :class="{ disabled: currentPage === 1 }">
+              <a class="page-link" href="#" @click.prevent="changePage(currentPage - 1)">
+                Previous
+              </a>
+            </li>
+            <li
+              class="page-item"
+              v-for="page in pageNumbers"
+              :key="page"
+              :class="{ active: page === currentPage }">
+              <a class="page-link" href="#" @click.prevent="changePage(page)">
+                {{ page }}
+              </a>
+            </li>
+            <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+              <a class="page-link" href="#" @click.prevent="changePage(currentPage + 1)">
+                Next
+              </a>
+            </li>
+          </ul>
+          <div class="text-center mt-2">
+            Showing {{ (currentPage - 1) * perPage + 1 }} to {{ Math.min(currentPage * perPage, totalBooks) }} of {{ totalBooks }} books
+          </div>
+        </nav>
       </div>
     </div>
 
@@ -214,6 +343,18 @@ export default {
       },
       message: '',
       showMessage: false,
+      filters: {
+        title: '',
+        author: '',
+        read: ''
+      },
+      sortBy: 'title',
+      sortOrder: 'asc',
+      currentPage: 1,
+      perPage: 10,
+      totalBooks: 0,
+      totalPages: 0,
+      selectedBooks: []
     };
   },
   components: {
@@ -234,13 +375,111 @@ export default {
         });
     },
     getBooks() {
-      const path = 'http://localhost:5001/books';
+      const params = new URLSearchParams();
+      if (this.filters.title) params.append('title', this.filters.title);
+      if (this.filters.author) params.append('author', this.filters.author);
+      if (this.filters.read) params.append('read', this.filters.read);
+      params.append('sort_by', this.sortBy);
+      params.append('sort_order', this.sortOrder);
+      params.append('page', this.currentPage);
+      params.append('per_page', this.perPage);
+
+      const path = `http://localhost:5001/books?${params.toString()}`;
       axios.get(path)
         .then((res) => {
           this.books = res.data.books;
+          this.totalBooks = res.data.total_books;
+          this.totalPages = res.data.total_pages;
         })
         .catch((error) => {
-
+          console.error(error);
+        });
+    },
+    onFilterChange() {
+      this.currentPage = 1;
+      this.getBooks();
+    },
+    sort(field) {
+      if (this.sortBy === field) {
+        this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.sortBy = field;
+        this.sortOrder = 'asc';
+      }
+      this.currentPage = 1;
+      this.getBooks();
+    },
+    changePage(page) {
+      if (page < 1 || page > this.totalPages) return;
+      this.currentPage = page;
+      this.getBooks();
+    },
+    onPerPageChange() {
+      this.currentPage = 1;
+      this.getBooks();
+    },
+    onSelectAllChange() {
+      if (this.selectAll) {
+        this.selectedBooks = this.books.map(book => book.id);
+      } else {
+        this.selectedBooks = [];
+      }
+    },
+    onSelectChange() {
+      this.selectAll = this.selectedBooks.length === this.books.length;
+    },
+    batchDelete() {
+      if (this.selectedBooks.length === 0) return;
+      if (!confirm('Are you sure you want to delete selected books?')) return;
+      
+      const path = 'http://localhost:5001/books/batch';
+      axios.post(path, {
+        book_ids: this.selectedBooks,
+        action: 'delete'
+      })
+        .then(() => {
+          this.message = 'Books deleted!';
+          this.showMessage = true;
+          this.selectedBooks = [];
+          this.getBooks();
+        })
+        .catch((error) => {
+          console.error(error);
+        });
+    },
+    batchMarkRead() {
+      if (this.selectedBooks.length === 0) return;
+      
+      const path = 'http://localhost:5001/books/batch';
+      axios.post(path, {
+        book_ids: this.selectedBooks,
+        action: 'mark_read'
+      })
+        .then(() => {
+          this.message = 'Books marked as read!';
+          this.showMessage = true;
+          this.selectedBooks = [];
+          this.getBooks();
+        })
+        .catch((error) => {
+          console.error(error);
+        });
+    },
+    batchMarkUnread() {
+      if (this.selectedBooks.length === 0) return;
+      
+      const path = 'http://localhost:5001/books/batch';
+      axios.post(path, {
+        book_ids: this.selectedBooks,
+        action: 'mark_unread'
+      })
+        .then(() => {
+          this.message = 'Books marked as unread!';
+          this.showMessage = true;
+          this.selectedBooks = [];
+          this.getBooks();
+        })
+        .catch((error) => {
           console.error(error);
         });
     },
@@ -336,6 +575,27 @@ export default {
           this.getBooks();
         });
     },
+  },
+  computed: {
+    selectAll: {
+      get() {
+        return this.selectedBooks.length === this.books.length && this.books.length > 0;
+      },
+      set(value) {
+        if (value) {
+          this.selectedBooks = this.books.map(book => book.id);
+        } else {
+          this.selectedBooks = [];
+        }
+      }
+    },
+    pageNumbers() {
+      const pages = [];
+      for (let i = 1; i <= this.totalPages; i++) {
+        pages.push(i);
+      }
+      return pages;
+    }
   },
   created() {
     this.getBooks();
